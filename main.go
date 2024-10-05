@@ -44,24 +44,34 @@ func onMessageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 		return
 	}
 
-	content := strings.TrimSpace(m.Content)
+	if strings.HasPrefix(m.Content, "!teams") {
+		args := strings.Fields(m.Content)
 
-	// Handle commands
-	if strings.HasPrefix(content, "!selectteams") {
-		selectTeamsCommand(s, m.ChannelID)
-	} else if strings.HasPrefix(content, "!playerStats") {
-		args := strings.Fields(content)
-		if len(args) < 2 {
-			s.ChannelMessageSend(m.ChannelID, "Usage: !playerStats <playerID>")
+		// Example: Pass guildID and voiceChannelID
+		guildID := m.GuildID
+		voiceChannelID := getVoiceChannelIDForUser(s, guildID, m.Author.ID) // Helper function to get the voice channel of the message author
+
+		if voiceChannelID == "" {
+			s.ChannelMessageSend(m.ChannelID, "You need to be in a voice channel!")
 			return
 		}
-		playerStatsCommand(s, m.ChannelID, args[1])
-	} else if strings.HasPrefix(content, "!eloGraph") {
-		args := strings.Fields(content)
-		if len(args) < 2 {
-			s.ChannelMessageSend(m.ChannelID, "Usage: !eloGraph <playerID>")
+
+		// Check if the `-a` flag is set (take all players)
+		takeAll := false
+		if len(args) > 1 && args[1] == "-a" {
+			takeAll = true
+		}
+
+		// Fetch and select players
+		commentatorID := "108220450194092032"
+		selectedPlayers, err := selectPlayersForGame(s, guildID, voiceChannelID, takeAll, commentatorID)
+		if err != nil {
+			s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("Error selecting players: %v", err))
 			return
 		}
-		eloGraphCommand(s, m.ChannelID, args[1])
+
+		// Process and display teams (Team 1 and Team 2)
+		team1, team2 := splitTeamsByELO(selectedPlayers)
+		s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("Team 1: %v\nTeam 2: %v", getTeamNames(team1), getTeamNames(team2)))
 	}
 }
