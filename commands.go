@@ -3,19 +3,9 @@ package main
 import (
 	"fmt"
 	"github.com/bwmarrin/discordgo"
+	"log"
 	"strings"
 )
-
-// Command to select teams and balance by ELO
-func selectTeamsCommand(s *discordgo.Session, channelID string) {
-	selectedPlayers, err := selectPlayersForGame()
-	if err != nil {
-		s.ChannelMessageSend(channelID, "Error selecting players.")
-		return
-	}
-	team1, team2 := splitTeamsByELO(selectedPlayers)
-	s.ChannelMessageSend(channelID, fmt.Sprintf("Team 1: %v\nTeam 2: %v", getTeamNames(team1), getTeamNames(team2)))
-}
 
 // Command to display player stats
 func playerStatsCommand(s *discordgo.Session, channelID, playerID string) {
@@ -52,4 +42,21 @@ func getTeamNames(players []*Player) string {
 		names = append(names, player.PlayerName)
 	}
 	return strings.Join(names, ", ")
+}
+
+// Helper function to get the voice channel ID for a user
+func getVoiceChannelIDForUser(s *discordgo.Session, guildID string, userID string) string {
+	guild, err := s.State.Guild(guildID)
+	if err != nil {
+		log.Printf("Error getting guild: %v", err)
+		return ""
+	}
+
+	// Loop through voice states to find the user’s voice channel
+	for _, vs := range guild.VoiceStates {
+		if vs.UserID == userID {
+			return vs.ChannelID // Return the user's voice channel ID
+		}
+	}
+	return ""
 }

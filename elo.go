@@ -4,6 +4,7 @@ import (
 	"github.com/bwmarrin/discordgo"
 	"log"
 	"math"
+	"sort"
 )
 
 // Record ELO change for a player
@@ -62,10 +63,25 @@ func calculateTeamELO(players []*Player) int {
 }
 
 func splitTeamsByELO(players []*Player) ([]*Player, []*Player) {
-	// Sort players by ELO (you can adjust this for custom team balancing)
-	// Assuming players are pre-sorted by ELO descending.
-	team1 := players[:5]
-	team2 := players[5:]
+	// Sort players by ELO in descending order
+	sort.Slice(players, func(i, j int) bool {
+		return players[i].ELO > players[j].ELO
+	})
+
+	var team1 []*Player
+	var team2 []*Player
+	var eloTeam1, eloTeam2 int
+
+	// Greedily assign players to teams based on ELO
+	for _, player := range players {
+		if eloTeam1 <= eloTeam2 {
+			team1 = append(team1, player)
+			eloTeam1 += player.ELO
+		} else {
+			team2 = append(team2, player)
+			eloTeam2 += player.ELO
+		}
+	}
 
 	return team1, team2
 }
@@ -98,7 +114,7 @@ func getPlayerNameFromDiscord(s *discordgo.Session, playerID string) string {
 	user, err := s.User(playerID)
 	if err != nil {
 		log.Printf("Error fetching user for ID %s: %v", playerID, err)
-		return "Unknown"
+		return "Unknown" // Fallback name
 	}
 	return user.Username
 }
