@@ -3,20 +3,57 @@ package store
 import (
 	"fmt"
 	"math"
+	"strconv"
 	"strings"
+
+	"github.com/syohex/go-texttable"
 )
+
+// DiscordID represents a Discord user ID.
+type DiscordID string
+
+// String returns the string representation of the Discord ID.
+// String returns the string representation of the Discord ID.
+func (d DiscordID) String() string {
+	return fmt.Sprintf("<@%s>", string(d))
+}
 
 // Player represents a CS2 player.
 type Player struct {
-	SteamID    string `db:"steam_id"`
-	DiscordID  string `db:"discord_id"`
-	CoreMember bool   `db:"core_member"`
+	SteamID    string    `db:"steam_id"`
+	DiscordID  DiscordID `db:"discord_id"`
+	CoreMember bool      `db:"core_member"`
 	Stat
 }
 
-// DiscordRef returns the Discord reference of the player.
-func (p Player) DiscordRef() string {
-	return fmt.Sprintf("<@%s>", p.DiscordID)
+// InfoTable returns a plain-text table with the player's statistics.
+func (p Player) InfoTable() string {
+	tbl := &texttable.TextTable{}
+	_ = tbl.SetHeader(
+		"SteamID",
+		"CoreMember",
+		"ELO",
+		"Games",
+		"Wins",
+		"WinRate",
+		"Kills",
+		"Assists",
+		"Deaths",
+		"KDA",
+	)
+	_ = tbl.AddRow(
+		p.SteamID,
+		strconv.FormatBool(p.CoreMember),
+		fmt.Sprintf("%.2f", p.ELO),
+		strconv.Itoa(p.GamesPlayed),
+		strconv.Itoa(p.Wins),
+		fmt.Sprintf("%.2f%%", p.WinRate()*100),
+		strconv.Itoa(p.Kills),
+		strconv.Itoa(p.Assists),
+		strconv.Itoa(p.Deaths),
+		fmt.Sprintf("%.2f", p.KDA()),
+	)
+	return tbl.Draw()
 }
 
 // Match represents a CS2 match.
@@ -61,25 +98,20 @@ type Stat struct {
 	Deaths      int     `db:"deaths"`
 }
 
-// Team represents a team of CS2 players.
-type Team [5]Player
-
-// String name returns the team members separated by commas.
-func (t Team) String() string {
-	names := make([]string, 5)
-	for i, p := range t {
-		names[i] = p.DiscordRef()
+// WinRate returns the win rate of the player.
+func (s Stat) WinRate() float64 {
+	if s.GamesPlayed == 0 {
+		return 0
 	}
-	return strings.Join(names, ", ")
+	return float64(s.Wins) / float64(s.GamesPlayed)
 }
 
-// ELO returns the total ELO of the team.
-func (t Team) ELO() float64 {
-	sum := float64(0)
-	for _, p := range t {
-		sum += p.ELO
+// KDA returns the kill-death-assist ratio of the player.
+func (s Stat) KDA() float64 {
+	if s.Deaths == 0 {
+		return float64(s.Kills + s.Assists)
 	}
-	return float64(sum) / 5
+	return float64(s.Kills+s.Assists) / float64(s.Deaths)
 }
 
 // KFactor returns the K-factor for the player.
@@ -94,4 +126,25 @@ func (s Stat) KFactor() int {
 	default:
 		return 32 // default K-factor for most players
 	}
+}
+
+// Team represents a team of CS2 players.
+type Team [5]Player
+
+// String name returns the team members separated by commas.
+func (t Team) String() string {
+	names := make([]string, 5)
+	for i, p := range t {
+		names[i] = p.DiscordID.String()
+	}
+	return strings.Join(names, ", ")
+}
+
+// ELO returns the total ELO of the team.
+func (t Team) ELO() float64 {
+	sum := float64(0)
+	for _, p := range t {
+		sum += p.ELO
+	}
+	return float64(sum) / 5
 }

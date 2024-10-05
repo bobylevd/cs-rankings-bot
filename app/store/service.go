@@ -54,7 +54,7 @@ func (s *Service) SelectTeams(ctx context.Context, req SelectTeamsRequest) (Matc
 
 	var candidates []Player
 	for _, pl := range players {
-		if s.contains(req.RequiredDiscordIDs, pl.DiscordID) {
+		if s.contains(req.RequiredDiscordIDs, string(pl.DiscordID)) {
 			candidates = append(candidates, pl)
 		}
 	}
@@ -70,7 +70,7 @@ func (s *Service) SelectTeams(ctx context.Context, req SelectTeamsRequest) (Matc
 	// sort out core members from the shuffle
 	var core []Player
 	for idx, pl := range candidates {
-		if !s.contains(req.RequiredPlayerNames, pl.Name) && !pl.CoreMember {
+		if !s.contains(req.RequiredDiscordIDs, string(pl.DiscordID)) && !pl.CoreMember {
 			continue
 		}
 
@@ -124,14 +124,14 @@ func (s *Service) ToggleCore(ctx context.Context, name string) (isCore bool, err
 	return pl.CoreMember, nil
 }
 
-// Stat returns the statistics for the specified Discord IDs.
-func (s *Service) Stat(ctx context.Context, discordIDs []string) ([]Player, error) {
+// List returns a list of players with the given Discord IDs.
+func (s *Service) List(ctx context.Context, discordIDs []string) ([]Player, error) {
 	players, err := s.Store.List(ctx, discordIDs)
 	if err != nil {
 		return nil, fmt.Errorf("list players: %w", err)
 	}
 
-	if len(players) != len(discordIDs) {
+	if len(discordIDs) != 0 && len(players) != len(discordIDs) {
 		var e ErrMissing
 		for _, id := range discordIDs {
 			if !s.containsDiscordID(players, id) {
@@ -158,7 +158,7 @@ func (s *Service) contains(strs []string, str string) bool {
 // containsDiscordID checks whether the slice contains the specified Discord ID.
 func (s *Service) containsDiscordID(players []Player, discordID string) bool {
 	for _, pl := range players {
-		if pl.DiscordID == discordID {
+		if string(pl.DiscordID) == discordID {
 			return true
 		}
 	}
@@ -166,12 +166,8 @@ func (s *Service) containsDiscordID(players []Player, discordID string) bool {
 }
 
 // Register registers a new player with the specified Discord ID, Steam ID, and name.
-func (s *Service) Register(ctx context.Context, discordID, steamID, name string) error {
-	pl := Player{
-		SteamID:   steamID,
-		DiscordID: discordID,
-		Name:      name,
-	}
+func (s *Service) Register(ctx context.Context, discordID, steamID string) error {
+	pl := Player{SteamID: steamID, DiscordID: DiscordID(discordID)}
 
 	players, err := s.Store.List(ctx, []string{discordID})
 	if err != nil {

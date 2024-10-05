@@ -4,13 +4,16 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"html/template"
 	"log"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/bobylevd/cs-rankings-bot/app/store"
 	"github.com/bwmarrin/discordgo"
+	"github.com/syohex/go-texttable"
+	"golang.org/x/sync/errgroup"
 )
 
 // Discord is a handler for Discord commands.
@@ -86,6 +89,8 @@ func (d *Discord) onMessage(s *discordgo.Session, msg *discordgo.MessageCreate) 
 		command = d.toggleCore
 	case strings.HasPrefix(content, "!ping"):
 		command = d.ping
+	case strings.HasPrefix(content, "!help"):
+		command = d.help
 	default:
 		return // do nothing
 	}
@@ -112,9 +117,19 @@ func (d *Discord) selectTeams(ctx context.Context, args []string) (string, error
 		memberDiscordIDs = append(memberDiscordIDs, member.UserID)
 	}
 
-	req := store.SelectTeamsRequest{
-		PresentDiscordIDs: memberDiscordIDs,
-		OmitPlayerNames:   args,
+	req := store.SelectTeamsRequest{PresentDiscordIDs: memberDiscordIDs}
+	omitFilled := false
+	for _, arg := range args {
+		if arg == "|" {
+			omitFilled = true
+			continue
+		}
+
+		if omitFilled {
+			req.OmitPlayerNames = append(req.OmitPlayerNames, arg)
+		} else {
+			req.PresentDiscordIDs = append(req.PresentDiscordIDs, arg)
+		}
 	}
 
 	teams, err := d.Service.SelectTeams(ctx, req)
@@ -149,11 +164,15 @@ func (d *Discord) stat(ctx context.Context, discordIDs []string) (string, error)
 		discordIDs = []string{senderID(ctx)}
 	}
 
+	for idx := range discordIDs {
+		discordIDs[idx] = d.parseDiscordRef(discordIDs[idx])
+	}
+
 	if discordIDs[0] == "all" {
 		discordIDs = []string{} // means "list all"
 	}
 
-	players, err := d.Service.Stat(ctx, discordIDs)
+	players, err := d.Service.List(ctx, discordIDs)
 	if err != nil {
 		var missing store.ErrMissing
 		if errors.As(err, &missing) {
@@ -162,27 +181,67 @@ func (d *Discord) stat(ctx context.Context, discordIDs []string) (string, error)
 		return "", fmt.Errorf("list players: %w", err)
 	}
 
-	const tmpl = `
-{{ range . }}
-{{ .DiscordRef }} | SteamID: {{ .SteamID }}
-{{ end }}
-`
+	mu := &sync.Mutex{}
+	tbl := &texttable.TextTable{}
+	_ = tbl.SetHeader(
+		"Name",
+		"SteamID",
+		"CoreMember",
+		"ELO",
+		"Games",
+		"Wins",
+		"WinRate",
+		"Kills",
+		"Assists",
+		"Deaths",
+		"KDA",
+	)
 
-	var sb strings.Builder
-	if err = template.Must(template.New("stat").Parse(tmpl)).Execute(&sb, players); err != nil {
-		return "", fmt.Errorf("execute template: %w", err)
+	ewg, ctx := errgroup.WithContext(ctx)
+	for _, pl := range players {
+		pl := pl
+		ewg.Go(func() error {
+			u, err := d.se.User(string(pl.DiscordID))
+			if err != nil {
+				log.Printf("[WARN] failed to get user %s: %v", pl.DiscordID, err)
+				u = &discordgo.User{Username: string(pl.DiscordID)}
+			}
+
+			mu.Lock()
+			defer mu.Unlock()
+
+			_ = tbl.AddRow(
+				u.Username,
+				pl.SteamID,
+				strconv.FormatBool(pl.CoreMember),
+				fmt.Sprintf("%.2f", pl.ELO),
+				strconv.Itoa(pl.GamesPlayed),
+				strconv.Itoa(pl.Wins),
+				fmt.Sprintf("%.2f%%", pl.WinRate()*100),
+				strconv.Itoa(pl.Kills),
+				strconv.Itoa(pl.Assists),
+				strconv.Itoa(pl.Deaths),
+				fmt.Sprintf("%.2f", pl.KDA()),
+			)
+
+			return nil
+		})
 	}
 
-	return sb.String(), nil
+	if err := ewg.Wait(); err != nil {
+		return "", fmt.Errorf("get usernames: %w", err)
+	}
+
+	return "```\n" + tbl.Draw() + "\n```", nil
 }
 
 func (d *Discord) register(ctx context.Context, args []string) (string, error) {
 	if len(args) != 2 {
-		return "usage: !register <steamid> <name>", nil
+		return "usage: !register <steamid>", nil
 	}
 
-	steamID, name := args[0], args[1]
-	if err := d.Service.Register(ctx, steamID, name, senderID(ctx)); err != nil {
+	steamID := args[0]
+	if err := d.Service.Register(ctx, senderID(ctx), steamID); err != nil {
 		return "", fmt.Errorf("register player: %w", err)
 	}
 
@@ -215,7 +274,25 @@ func (d *Discord) isAdmin(discordID string) bool {
 	return false
 }
 
-func (d *Discord) ping(context.Context, []string) (string, error) { return "pong", nil }
+func (d *Discord) ping(context.Context, []string) (string, error) { return "pong!", nil }
+
+func (d *Discord) parseDiscordRef(ref string) string {
+	if strings.HasPrefix(ref, "<@!") && strings.HasSuffix(ref, ">") {
+		return ref[3 : len(ref)-1]
+	}
+	return ref
+}
+
+func (d *Discord) help(context.Context, []string) (reply string, err error) {
+	return `
+!selectteams [omitPlayer1 omitPlayer2 ...] | [requiredPlayer1 requiredPlayer2 ...] - запуск шафла команд
+!stat [discordID1 discordID2 ... | all] - статистика игрока/игроков
+!register <steamid> - регистрация по steam id
+!toggleCore <name> - только для админов, переключает статус "основного" игрока
+!ping - pong!
+!help - это сообщение
+	`, nil
+}
 
 type senderIDKey struct{}
 
