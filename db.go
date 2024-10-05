@@ -46,6 +46,12 @@ func initDB() {
 			FOREIGN KEY(PlayerID) REFERENCES players(PlayerID),
 			FOREIGN KEY(MatchID) REFERENCES matches(MatchID)
 		);
+		CREATE TABLE IF NOT EXISTS temp_teams (
+			id INTEGER PRIMARY KEY,
+			team1 TEXT,
+			team2 TEXT,
+			timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+		);
 	`)
 	if err != nil {
 		log.Fatal("Error creating tables:", err)

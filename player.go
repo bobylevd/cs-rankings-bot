@@ -6,6 +6,7 @@ import (
 	"github.com/bwmarrin/discordgo"
 	"log"
 	"math/rand"
+	"strings"
 	"time"
 )
 
@@ -19,6 +20,8 @@ type Player struct {
 	Kills       int
 	Assists     int
 	Deaths      int
+	Percentile  float64
+	KDA         float64
 }
 
 // Retrieve or create a player
@@ -44,7 +47,7 @@ func getOrCreatePlayer(playerID string, s *discordgo.Session) *Player {
 	return &player
 }
 
-func selectPlayersForGame(s *discordgo.Session, guildID string, voiceChannelID string, takeAll bool, commentatorID string) ([]*Player, error) {
+func selectPlayersForGame(s *discordgo.Session, guildID string, voiceChannelID string, takeAll bool, commentatorID string) ([]*Player, []*Player, error) {
 	var corePlayers []*Player
 	var nonCorePlayers []*Player
 	var allPlayers []*Player
@@ -52,11 +55,11 @@ func selectPlayersForGame(s *discordgo.Session, guildID string, voiceChannelID s
 	// Get the list of users in the voice channel
 	voiceChannelMembers, err := getUsersInVoiceChannel(s, guildID, voiceChannelID)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	if len(voiceChannelMembers) == 0 {
-		return nil, errors.New("no players in the voice channel")
+		return nil, nil, errors.New("no players in the voice channel")
 	}
 
 	// Process each member in the voice channel, check if they exist in the database or create them
@@ -82,12 +85,12 @@ func selectPlayersForGame(s *discordgo.Session, guildID string, voiceChannelID s
 		finalSelection := selectTopPlayers(corePlayers, nonCorePlayers)
 
 		team1, team2 := splitTeamsByELO(finalSelection)
-		return append(team1, team2...), nil
+		return team1, team2, nil
 	}
 
 	// Scenario 2: Take all players, balance them by ELO
 	team1, team2 := splitTeamsByELO(allPlayers)
-	return append(team1, team2...), nil
+	return team1, team2, nil
 }
 
 // Helper function to get users currently in a voice channel
@@ -154,4 +157,62 @@ func selectTopPlayers(corePlayers, nonCorePlayers []*Player) []*Player {
 	}
 
 	return finalSelection
+}
+
+// Helper function to get player IDs from a list of players
+func getPlayerIDs(players []*Player) string {
+	var ids []string
+	for _, player := range players {
+		ids = append(ids, player.PlayerID)
+	}
+	return strings.Join(ids, ",")
+}
+
+// Convert a comma-separated string of player IDs into a slice of Player structs
+func getPlayersFromIDs(playerIDs string) []*Player {
+	var players []*Player
+	ids := strings.Split(playerIDs, ",")
+
+	for _, id := range ids {
+		var player Player
+		err := db.QueryRow("SELECT PlayerID, PlayerName, CoreMember, ELO, GamesPlayed, Wins, Kills, Assists, Deaths FROM players WHERE PlayerID = ?", id).Scan(
+			&player.PlayerID, &player.PlayerName, &player.CoreMember, &player.ELO, &player.GamesPlayed, &player.Wins, &player.Kills, &player.Assists, &player.Deaths,
+		)
+		if err != nil {
+			log.Printf("Error retrieving player with ID %s: %v", id, err)
+			continue // Skip players that couldn't be retrieved
+		}
+		players = append(players, &player)
+	}
+
+	return players
+}
+
+// Helper function to map player IDs to their stats
+func mapPlayersToStats(winners []*Player, stat string, losers []*Player) map[string]int {
+	stats := make(map[string]int)
+
+	for _, player := range winners {
+		switch stat {
+		case "kills":
+			stats[player.PlayerID] = player.Kills
+		case "assists":
+			stats[player.PlayerID] = player.Assists
+		case "deaths":
+			stats[player.PlayerID] = player.Deaths
+		}
+	}
+
+	for _, player := range losers {
+		switch stat {
+		case "kills":
+			stats[player.PlayerID] = player.Kills
+		case "assists":
+			stats[player.PlayerID] = player.Assists
+		case "deaths":
+			stats[player.PlayerID] = player.Deaths
+		}
+	}
+
+	return stats
 }
