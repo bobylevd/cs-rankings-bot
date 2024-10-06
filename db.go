@@ -2,6 +2,7 @@ package main
 
 import (
 	"database/sql"
+	"fmt"
 	"log"
 	_ "modernc.org/sqlite"
 )
@@ -56,4 +57,27 @@ func initDB() {
 	if err != nil {
 		log.Fatal("Error creating tables:", err)
 	}
+}
+
+func getPlayersFromDB() ([]string, error) {
+	rows, err := db.Query("SELECT PlayerID FROM players")
+	if err != nil {
+		return nil, fmt.Errorf("Error fetching players from DB: %v", err)
+	}
+	defer rows.Close()
+
+	var playerIDs []string
+	for rows.Next() {
+		var playerID string
+		if err := rows.Scan(&playerID); err != nil {
+			return nil, fmt.Errorf("Error scanning player ID: %v", err)
+		}
+		playerIDs = append(playerIDs, playerID)
+	}
+
+	if len(playerIDs) == 0 {
+		return nil, fmt.Errorf("No players found in the database")
+	}
+
+	return playerIDs, nil
 }

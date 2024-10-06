@@ -8,27 +8,38 @@ import (
 	"strings"
 )
 
+// a map to associate commands with their handler functions
+var commandHandlers = map[string]func(s *discordgo.Session, m *discordgo.MessageCreate, args []string){
+	"!teams": handleTeamsCommand,
+	"!win":   handleWinCommand,
+	"!end":   handleEndSessionCommand,
+}
+
 func main() {
-	initDB() // Initialize database
+	initDB()
 	defer db.Close()
 
-	// Initialize Discord bot
 	token := os.Getenv("DISCORD_BOT_TOKEN")
 	if token == "" {
 		log.Fatal("No Discord bot token provided. Set the DISCORD_BOT_TOKEN environment variable.")
 	}
+
 	dg, err := discordgo.New("Bot " + token)
 	if err != nil {
 		log.Fatal("Error creating Discord session,", err)
 	}
 
-	// Import historical data if needed (comment out if not needed in normal operations)
-	// importHistoricalData("historical_data.json", dg)
-
 	fmt.Println("Bot is running...")
-	dg.AddHandler(onMessageCreate)
+
+	// Import historical data if needed (comment out if not needed in normal operations)
 	//importHistoricalData("historical_data.json", dg)
+
+	// Register the message handler
+	dg.AddHandler(onMessageCreate)
+
+	// Open the WebSocket and begin listening.
 	err = dg.Open()
+
 	if err != nil {
 		log.Fatal("Error opening connection,", err)
 	}
@@ -44,74 +55,12 @@ func onMessageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 		return
 	}
 
-	if strings.HasPrefix(m.Content, "!teams") {
-		args := strings.Fields(m.Content)
-
-		// Example: Pass guildID and voiceChannelID
-		guildID := m.GuildID
-		voiceChannelID := getVoiceChannelIDForUser(s, guildID, m.Author.ID) // Helper function to get the voice channel of the message author
-
-		if voiceChannelID == "" {
-			s.ChannelMessageSend(m.ChannelID, "You need to be in a voice channel!")
-			return
-		}
-
-		// Check if the `-a` flag is set (take all players)
-		takeAll := false
-		if len(args) > 1 && args[1] == "-a" {
-			takeAll = true
-		}
-
-		// Fetch and select players
-		commentatorID := "108220450194092032"
-		team1, team2, err := selectPlayersForGame(s, guildID, voiceChannelID, takeAll, commentatorID)
-		if err != nil {
-			s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("Error selecting players: %v", err))
-			return
-		}
-
-		storeTeamsInDB(team1, team2)
-
-		// Process and display teams (Team 1 and Team 2)
-		s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("Team 1: %v\nTeam 2: %v", getTeamNames(team1), getTeamNames(team2)))
-	}
-	if strings.HasPrefix(m.Content, "!report") {
-		args := strings.Fields(m.Content)
-
-		if len(args) < 2 {
-			s.ChannelMessageSend(m.ChannelID, "Please specify the winning team (team1won or team2won).")
-			return
-		}
-
-		var winningTeam int
-		if args[1] == "team1" {
-			winningTeam = 1
-		} else if args[1] == "team2" {
-			winningTeam = 2
-		} else {
-			s.ChannelMessageSend(m.ChannelID, "Invalid team. Use team1won or team2won.")
-			return
-		}
-
-		// Retrieve stored teams from the database
-		team1, team2, err := getStoredTeamsFromDB()
-		if err != nil {
-			s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("Error: %v. Please run `!selectteams` to form new teams.", err))
-			return
-		}
-
-		// Save the match result using the stored teams
-		matchID := saveMatchData(team1, team2, winningTeam)
-
-		// Notify the channel, but don't clear the teams yet
-		s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("Match %d reported: Team %d won!", matchID, winningTeam))
+	args := strings.Fields(m.Content)
+	if len(args) == 0 {
+		return
 	}
 
-	if strings.HasPrefix(m.Content, "!end-session") {
-		// Clear the stored teams from the database
-		clearStoredTeamsFromDB()
-
-		// Notify the channel that the session has ended
-		s.ChannelMessageSend(m.ChannelID, "The current match session has ended, and teams have been cleared.")
+	if handler, exists := commandHandlers[args[0]]; exists {
+		handler(s, m, args)
 	}
 }

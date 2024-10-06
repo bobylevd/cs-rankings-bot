@@ -24,16 +24,24 @@ type Player struct {
 	KDA         float64
 }
 
-// Retrieve or create a player
-func getOrCreatePlayer(playerID string, s *discordgo.Session) *Player {
+// Retrieve or create a player, optionally with a player name
+func getOrCreatePlayer(playerID string, playerNameOptional ...string) *Player {
 	var player Player
+	var playerName string
+
+	// Check if a player name was passed, otherwise fetch from Discord
+	if len(playerNameOptional) > 0 {
+		playerName = playerNameOptional[0]
+	} else {
+		playerName = getPlayerNameFromDatabaseOrDefault(playerID)
+	}
+
 	err := db.QueryRow("SELECT PlayerID, PlayerName, CoreMember, ELO, GamesPlayed, Wins, Kills, Assists, Deaths FROM players WHERE PlayerID = ?", playerID).Scan(
 		&player.PlayerID, &player.PlayerName, &player.CoreMember, &player.ELO, &player.GamesPlayed, &player.Wins, &player.Kills, &player.Assists, &player.Deaths,
 	)
 
 	if err == sql.ErrNoRows {
-		// Player not found, fetch from Discord and create a new player
-		playerName := getPlayerNameFromDiscord(s, playerID)
+		// Player not found, create a new one with a default or provided name
 		player = Player{
 			PlayerID:   playerID,
 			PlayerName: playerName,
@@ -47,29 +55,23 @@ func getOrCreatePlayer(playerID string, s *discordgo.Session) *Player {
 	return &player
 }
 
-func selectPlayersForGame(s *discordgo.Session, guildID string, voiceChannelID string, takeAll bool, commentatorID string) ([]*Player, []*Player, error) {
+func selectPlayersForGame(playerIDs []string, takeAll bool, commentatorID string) ([]*Player, []*Player, error) {
 	var corePlayers []*Player
 	var nonCorePlayers []*Player
 	var allPlayers []*Player
 
-	// Get the list of users in the voice channel
-	voiceChannelMembers, err := getUsersInVoiceChannel(s, guildID, voiceChannelID)
-	if err != nil {
-		return nil, nil, err
+	if len(playerIDs) == 0 {
+		return nil, nil, errors.New("no players provided")
 	}
 
-	if len(voiceChannelMembers) == 0 {
-		return nil, nil, errors.New("no players in the voice channel")
-	}
-
-	// Process each member in the voice channel, check if they exist in the database or create them
-	for _, member := range voiceChannelMembers {
+	// Process each player ID, check if they exist in the database or create them
+	for _, playerID := range playerIDs {
 		// Exclude the commentator from the selection
-		if member.User.ID == commentatorID {
+		if playerID == commentatorID {
 			continue
 		}
 
-		player := getOrCreatePlayer(member.User.ID, s)
+		player := getOrCreatePlayer(playerID)
 		allPlayers = append(allPlayers, player)
 
 		// Categorize based on CoreMember status
@@ -83,7 +85,6 @@ func selectPlayersForGame(s *discordgo.Session, guildID string, voiceChannelID s
 	// Scenario 1: Not taking all players, limit to 10
 	if !takeAll && len(allPlayers) > 10 {
 		finalSelection := selectTopPlayers(corePlayers, nonCorePlayers)
-
 		team1, team2 := splitTeamsByELO(finalSelection)
 		return team1, team2, nil
 	}
@@ -215,4 +216,32 @@ func mapPlayersToStats(winners []*Player, stat string, losers []*Player) map[str
 	}
 
 	return stats
+}
+
+// GetPlayerIDsFromVoiceChannel retrieves the list of player IDs from a Discord voice channel
+func GetPlayerIDsFromVoiceChannel(s *discordgo.Session, guildID string, voiceChannelID string) ([]string, error) {
+	voiceChannelMembers, err := getUsersInVoiceChannel(s, guildID, voiceChannelID)
+	if err != nil {
+		return nil, err
+	}
+
+	var playerIDs []string
+	for _, member := range voiceChannelMembers {
+		playerIDs = append(playerIDs, member.User.ID)
+	}
+
+	return playerIDs, nil
+}
+
+// Helper function to get player name either from the database or return a default
+func getPlayerNameFromDatabaseOrDefault(playerID string) string {
+	var playerName string
+	err := db.QueryRow("SELECT PlayerName FROM players WHERE PlayerID = ?", playerID).Scan(&playerName)
+	if err == sql.ErrNoRows {
+		return "UnknownPlayer" // Default name if none is found
+	} else if err != nil {
+		log.Printf("Error retrieving player name for %s: %v", playerID, err)
+		return "UnknownPlayer"
+	}
+	return playerName
 }

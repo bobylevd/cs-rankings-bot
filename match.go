@@ -57,7 +57,7 @@ func processMatchData(team1, team2 map[string]map[string]int, winningTeam int, s
 
 	// Process Team 1 players
 	for playerID, stats := range team1 {
-		player := getOrCreatePlayer(playerID, s) // Get or create player
+		player := getOrCreatePlayer(playerID) // Get or create player
 		player.GamesPlayed++
 		if winningTeam == 1 {
 			player.Wins++ // Only increment wins if Team 1 won
@@ -71,7 +71,7 @@ func processMatchData(team1, team2 map[string]map[string]int, winningTeam int, s
 
 	// Process Team 2 players
 	for playerID, stats := range team2 {
-		player := getOrCreatePlayer(playerID, s) // Get or create player
+		player := getOrCreatePlayer(playerID) // Get or create player
 		player.GamesPlayed++
 		if winningTeam == 2 {
 			player.Wins++ // Only increment wins if Team 2 won
