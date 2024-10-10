@@ -3,6 +3,7 @@ package main
 import (
 	"database/sql"
 	"fmt"
+	_ "modernc.org/sqlite"
 	"time"
 )
 
@@ -190,8 +191,8 @@ func (db *DB) GetStoredTeams() (string, string, time.Time, error) {
 		return "", "", time.Time{}, err
 	}
 
-	// Parse the timestamp string
-	timestamp, err := time.Parse("2006-01-02 15:04:05", timestampStr)
+	// Parse the timestamp string using time.RFC3339
+	timestamp, err := time.Parse(time.RFC3339, timestampStr)
 	if err != nil {
 		return "", "", time.Time{}, fmt.Errorf("failed to parse timestamp: %v", err)
 	}

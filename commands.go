@@ -78,15 +78,18 @@ func handleTeamsCommand(s *discordgo.Session, m *discordgo.MessageCreate, args [
 		return
 	}
 
-	// Remove commentatorID if not taking all
-	if !takeAll {
-		var filteredIDs []string
-		for _, id := range playerIDs {
-			if id != commentatorID {
-				filteredIDs = append(filteredIDs, id)
-			}
+	// Remove commentatorID
+	var filteredIDs []string
+	for _, id := range playerIDs {
+		if id != commentatorID {
+			filteredIDs = append(filteredIDs, id)
 		}
-		playerIDs = filteredIDs
+	}
+	playerIDs = filteredIDs
+
+	// Limit to 10 players if not taking all
+	if !takeAll && len(playerIDs) > 10 {
+		playerIDs = playerIDs[:10]
 	}
 
 	// Load players from DB or create new ones
@@ -119,6 +122,12 @@ func handleTeamsCommand(s *discordgo.Session, m *discordgo.MessageCreate, args [
 		players = append(players, player)
 	}
 
+	// Check if we have at least 2 players to form teams
+	if len(players) < 2 {
+		s.ChannelMessageSend(m.ChannelID, "Not enough players to form teams.")
+		return
+	}
+
 	// Select teams based on MMR
 	team1, team2, err := BalanceTeams(players)
 	if err != nil {
@@ -135,39 +144,65 @@ func handleTeamsCommand(s *discordgo.Session, m *discordgo.MessageCreate, args [
 	}
 
 	// Send team compositions
-	s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("Team 1: %v\nTeam 2: %v", getTeamNames(team1.Players), getTeamNames(team2.Players)))
+	s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("Team 1: %v\nTeam 2: %v", getTeamNames(team1), getTeamNames(team2)))
 }
 
-//
-//func handleWinCommand(s *discordgo.Session, m *discordgo.MessageCreate, match *Match, ts *TeamStorage, args []string) {
-//	if len(args) < 2 {
-//		s.ChannelMessageSend(m.ChannelID, "Please specify the winning team (team1won or team2won).")
-//		return
-//	}
-//
-//	var winningTeam int
-//	if args[1] == "team1" {
-//		winningTeam = 1
-//	} else if args[1] == "team2" {
-//		winningTeam = 2
-//	} else {
-//		s.ChannelMessageSend(m.ChannelID, "Invalid team. Use team1won or team2won.")
-//		return
-//	}
-//
-//	// Retrieve stored teams from the database
-//	team1, team2, err := ts.GetStoredTeams()
-//	if err != nil {
-//		s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("Error: %v. Please run `!teams` to form new teams.", err))
-//		return
-//	}
-//
-//	// Save the match result using the stored teams
-//	matchID := match.SaveMatch(team1, team2)
-//	s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("Match %d reported: Team %d won!", matchID, winningTeam))
-//}
-//
-//func handleEndSessionCommand(s *discordgo.Session, m *discordgo.MessageCreate, args []string) {
-//	clearStoredTeamsFromDB()
-//	s.ChannelMessageSend(m.ChannelID, "The current match session has ended, and teams have been cleared.")
-//}
+func handleWinCommand(s *discordgo.Session, m *discordgo.MessageCreate, args []string, db *DB) {
+	if len(args) < 2 {
+		s.ChannelMessageSend(m.ChannelID, "Please specify the winning team (team1 or team2).")
+		return
+	}
+
+	var winningTeam int
+	if args[1] == "team1" {
+		winningTeam = 1
+	} else if args[1] == "team2" {
+		winningTeam = 2
+	} else {
+		s.ChannelMessageSend(m.ChannelID, "Invalid team. Use team1 or team2.")
+		return
+	}
+
+	// Retrieve stored teams from the database
+	ts := NewTeamStorage(db, 48*time.Hour)
+	team1, team2, err := ts.GetStoredTeams()
+	if err != nil {
+		s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("Error: %v. Please run `!teams` to form new teams.", err))
+		return
+	}
+
+	// Assign winner and loser teams based on the winning team
+	var winnerTeam, loserTeam *Team
+	if winningTeam == 1 {
+		winnerTeam = team1
+		loserTeam = team2
+	} else {
+		winnerTeam = team2
+		loserTeam = team1
+	}
+
+	// Create a Match instance
+	match := &Match{
+		Winner: winnerTeam,
+		Loser:  loserTeam,
+		db:     db,
+	}
+
+	// Save the match result using the stored teams
+	matchID, err := match.SaveMatch(db)
+	if err != nil {
+		s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("Error saving match: %v", err))
+		return
+	}
+
+	s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("Match %d reported: Team %d won!", matchID, winningTeam))
+}
+func handleEndSessionCommand(s *discordgo.Session, m *discordgo.MessageCreate, db *DB, args []string) {
+	// Clear stored teams
+	ts := NewTeamStorage(db, 48*time.Hour)
+	err := ts.ClearStoredTeams()
+	if err != nil {
+		s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("Error clearing stored teams: %v", err))
+		return
+	}
+}
