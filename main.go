@@ -41,7 +41,7 @@ func main() {
 	discordInstance := NewDiscord(dg)
 
 	// Uncomment the following line to import historical data
-	ImportHistoricalData("historical_data.json", db, discordInstance)
+	//ImportHistoricalData("historical_data.json", db, discordInstance)
 
 	// Register the message handler
 	dg.AddHandler(func(s *discordgo.Session, m *discordgo.MessageCreate) {
@@ -73,8 +73,7 @@ func onMessageCreate(s *discordgo.Session, m *discordgo.MessageCreate, db *DB, d
 	//case "!end":
 	//	handleEndSessionCommand(s, m, args, db)
 	case "!stats":
-		playerID := m.Author.ID
-		playerStatsCommand(s, m.ChannelID, playerID, db)
+		playerStatsCommand(s, m, args, db, discordInstance)
 	case "!elograph":
 		playerID := m.Author.ID
 		eloGraphCommand(s, m.ChannelID, playerID, db)

@@ -15,7 +15,7 @@ func (ds *Discord) GetPlayerName(playerID string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return user.Username, nil
+	return user.GlobalName, nil
 }
 
 func (ds *Discord) GetPlayersInVoiceChannel(guildID, voiceChannelID string) ([]string, error) {

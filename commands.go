@@ -5,21 +5,92 @@ import (
 	"fmt"
 	"github.com/bwmarrin/discordgo"
 	"log"
+	"strings"
 	"time"
 )
 
 // Command to display player stats
-func playerStatsCommand(s *discordgo.Session, channelID, playerID string, db *DB) {
+func playerStatsCommand(s *discordgo.Session, m *discordgo.MessageCreate, args []string, db *DB, discordInstance *Discord) {
+	var playerID string
+	var playerName string
+
+	if len(args) == 1 {
+		// No additional arguments; use the caller's ID and username
+		playerID = m.Author.ID
+		playerName = m.Author.Username
+	} else {
+		// Additional argument supplied; expect a user mention
+		arg := args[1]
+		// Mentions are in the format <@1234567890> or <@!1234567890>
+		if len(arg) > 3 && strings.HasPrefix(arg, "<@") && strings.HasSuffix(arg, ">") {
+			// Extract the user ID from the mention
+			userID := arg[2 : len(arg)-1]
+			// Remove the '!' prefix if present
+			userID = strings.TrimPrefix(userID, "!")
+			playerID = userID
+
+			// Fetch the user's username
+			user, err := s.User(userID)
+			if err != nil {
+				s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("Error fetching user information: %v", err))
+				return
+			}
+			playerName = user.Username
+		} else {
+			s.ChannelMessageSend(m.ChannelID, "Invalid user mention. Please mention a user like @username.")
+			return
+		}
+	}
+
+	// Fetch the player stats from the database
 	player, err := db.GetPlayer(playerID)
 	if err != nil {
-		s.ChannelMessageSend(channelID, fmt.Sprintf("Error fetching player stats: %v", err))
+		if err == sql.ErrNoRows {
+			s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("Player %s not found in the database.", playerName))
+		} else {
+			s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("Error fetching player stats: %v", err))
+		}
 		return
 	}
-	stats := fmt.Sprintf(
-		"Player: %s\nGames Played: %d\nWins: %d\nMMR: %d\nKills: %d\nAssists: %d\nDeaths: %d\nKDA: %.2f",
-		player.PlayerName, player.GamesPlayed, player.Wins, player.MMR, player.Kills, player.Assists, player.Deaths, player.CalculateKda(),
-	)
-	s.ChannelMessageSend(channelID, stats)
+
+	// Create an embed message
+	embed := &discordgo.MessageEmbed{
+		Title: fmt.Sprintf("Stats for %s", player.PlayerName),
+		Color: 0x00ff00,
+		Fields: []*discordgo.MessageEmbedField{
+			{
+				Name:   "Games Played",
+				Value:  fmt.Sprintf("%d", player.GamesPlayed),
+				Inline: true,
+			},
+			{
+				Name:   "Wins",
+				Value:  fmt.Sprintf("%d", player.Wins),
+				Inline: true,
+			},
+			{
+				Name:   "MMR",
+				Value:  fmt.Sprintf("%d", player.MMR),
+				Inline: true,
+			},
+			{
+				Name:   "Kills",
+				Value:  fmt.Sprintf("%d", player.Kills),
+				Inline: true,
+			},
+			{
+				Name:   "Assists",
+				Value:  fmt.Sprintf("%d", player.Assists),
+				Inline: true,
+			},
+			{
+				Name:   "Deaths",
+				Value:  fmt.Sprintf("%d", player.Deaths),
+				Inline: true,
+			},
+		},
+	}
+	s.ChannelMessageSendEmbed(m.ChannelID, embed)
 }
 
 // Command to display ELO graph data (for graphing or text output)

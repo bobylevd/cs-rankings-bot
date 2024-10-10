@@ -13,7 +13,7 @@ type HistoricalData map[string]map[string]MatchData
 
 type MatchData struct {
 	Winner map[string]PlayerStats `json:"winner"`
-	Loser  map[string]PlayerStats `json:"looser"`
+	Loser  map[string]PlayerStats `json:"loser"`
 }
 
 type PlayerStats struct {
