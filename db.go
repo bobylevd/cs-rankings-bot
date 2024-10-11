@@ -287,3 +287,12 @@ func (db *DB) GetMatch(matchID int) (*Match, error) {
 	}
 	return match, nil
 }
+
+func (db *DB) HasMatches() (bool, error) {
+	var count int
+	err := db.db.QueryRow("SELECT COUNT(*) FROM matches").Scan(&count)
+	if err != nil {
+		return false, err
+	}
+	return count > 0, nil
+}

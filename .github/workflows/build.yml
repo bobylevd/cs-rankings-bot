@@ -30,7 +30,7 @@ jobs:
       - name: Copy files via SSH
         run: |
           scp -o StrictHostKeyChecking=no bot ${{ secrets.USERNAME }}@${{ secrets.IP }}:~/bot
-          scp -o StrictHostKeyChecking=no -r match_data.db ${{ secrets.USERNAME }}@${{ secrets.IP }}:~/
+          scp -o StrictHostKeyChecking=no -r historical_data.json ${{ secrets.USERNAME }}@${{ secrets.IP }}:~/
 
       - name: Restart Bot on EC2
         run: |

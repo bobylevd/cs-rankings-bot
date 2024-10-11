@@ -40,8 +40,20 @@ func main() {
 	// Create a Discord instance from the session
 	discordInstance := NewDiscord(dg)
 
-	// Uncomment the following line to import historical data
-	//ImportHistoricalData("historical_data.json", db, discordInstance)
+	hasMatches, err := db.HasMatches()
+	if err != nil {
+		log.Fatalf("Error checking for existing matches: %v", err)
+	}
+
+	if !hasMatches {
+		// Import historical data if no matches exist
+		fmt.Println("No existing matches found. Importing historical data...")
+		// Replace "historical_data.json" with the path to your historical data file
+		ImportHistoricalData("historical_data.json", db, discordInstance)
+		fmt.Println("Historical data import completed.")
+	} else {
+		fmt.Println("Existing matches found. Skipping historical data import.")
+	}
 
 	// Register the message handler
 	dg.AddHandler(func(s *discordgo.Session, m *discordgo.MessageCreate) {
