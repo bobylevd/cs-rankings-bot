@@ -266,8 +266,12 @@ func handleWinCommand(s *discordgo.Session, m *discordgo.MessageCreate, args []s
 		return
 	}
 
-	s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("Match %d reported: Team %d won!", matchID, winningTeam))
+	// Send an interactive message with a button to report stats
+	sendMatchReportPrompt(s, m.ChannelID, matchID)
+
+	s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("Match %d reported: Team %d won! Please report your stats using the button below.", matchID, winningTeam))
 }
+
 func handleEndSessionCommand(s *discordgo.Session, m *discordgo.MessageCreate, db *DB, args []string) {
 	// Clear stored teams
 	ts := NewTeamStorage(db, 48*time.Hour)

@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/bwmarrin/discordgo"
 	"strings"
 )
 
@@ -99,4 +100,23 @@ func getPlayersFromIDs(ids string, db *DB) ([]*Player, error) {
 		players = append(players, player)
 	}
 	return players, nil
+}
+
+func sendMatchReportPrompt(s *discordgo.Session, channelID string, matchID int) {
+	components := []discordgo.MessageComponent{
+		discordgo.ActionsRow{
+			Components: []discordgo.MessageComponent{
+				discordgo.Button{
+					Label:    "Report Your Stats",
+					CustomID: fmt.Sprintf("report_match_stats_%d", matchID),
+					Style:    discordgo.PrimaryButton,
+				},
+			},
+		},
+	}
+
+	s.ChannelMessageSendComplex(channelID, &discordgo.MessageSend{
+		Content:    "Click the button below to report your match stats.",
+		Components: components,
+	})
 }

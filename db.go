@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	_ "modernc.org/sqlite"
+	"strings"
 	"time"
 )
 
@@ -241,4 +242,48 @@ func (db *DB) GetMmrHistory(playerID string) ([]int, []string, error) {
 	}
 
 	return mmrs, timestamps, nil
+}
+
+func (db *DB) GetMatch(matchID int) (*Match, error) {
+	// Retrieve the match from the database
+	// Get Winner and Loser team player IDs
+	var winnerIDsStr, loserIDsStr string
+	err := db.db.QueryRow("SELECT Winner, Loser FROM matches WHERE MatchID = ?", matchID).Scan(&winnerIDsStr, &loserIDsStr)
+	if err != nil {
+		return nil, err
+	}
+
+	// Get players for Winner team
+	winnerPlayerIDs := strings.Split(winnerIDsStr, ",")
+	var winnerPlayers []*Player
+	for _, playerID := range winnerPlayerIDs {
+		player, err := db.GetPlayer(playerID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get player %s: %v", playerID, err)
+		}
+		winnerPlayers = append(winnerPlayers, player)
+	}
+
+	// Get players for Loser team
+	loserPlayerIDs := strings.Split(loserIDsStr, ",")
+	var loserPlayers []*Player
+	for _, playerID := range loserPlayerIDs {
+		player, err := db.GetPlayer(playerID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get player %s: %v", playerID, err)
+		}
+		loserPlayers = append(loserPlayers, player)
+	}
+
+	// Create the Match object
+	match := &Match{
+		MatchID: matchID,
+		Winner: &Team{
+			Players: winnerPlayers,
+		},
+		Loser: &Team{
+			Players: loserPlayers,
+		},
+	}
+	return match, nil
 }

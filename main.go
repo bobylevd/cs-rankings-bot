@@ -48,6 +48,11 @@ func main() {
 		onMessageCreate(s, m, db, discordInstance)
 	})
 
+	// Register session handler
+	dg.AddHandler(func(s *discordgo.Session, i *discordgo.InteractionCreate) {
+		handleInteraction(s, i, db)
+	})
+
 	// Keep the program running
 	select {}
 }
