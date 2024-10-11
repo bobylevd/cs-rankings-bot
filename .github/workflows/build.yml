@@ -1,0 +1,37 @@
+name: Build and Deploy Discord Bot
+
+on:
+  push:
+    branches:
+      - main 
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22.6'
+
+      - name: Build binary
+        run: |
+          go build -o bot .
+
+      - name: Add SSH key
+        uses: webfactory/ssh-agent@v0.7.0
+        with:
+          ssh-private-key: ${{ secrets.EC2_SSH_KEY }}
+
+      - name: Copy files via SSH
+        run: |
+          scp -o StrictHostKeyChecking=no bot ${{ secrets.USERNAME }}@${{ secrets.IP }}:~/bot
+          scp -o StrictHostKeyChecking=no -r match_data.db ${{ secrets.USERNAME }}@${{ secrets.IP }}:~/
+
+      - name: Run remote commands
+        run: |
+          ssh -o StrictHostKeyChecking=no ${{ secrets.USERNAME }}@${{ secrets.IP }} "sudo pkill bot || true; nohup ./bot > bot.log 2>&1 &"
