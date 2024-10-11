@@ -32,6 +32,8 @@ jobs:
           scp -o StrictHostKeyChecking=no bot ${{ secrets.USERNAME }}@${{ secrets.IP }}:~/bot
           scp -o StrictHostKeyChecking=no -r match_data.db ${{ secrets.USERNAME }}@${{ secrets.IP }}:~/
 
-      - name: Run remote commands
+      - name: Restart Bot on EC2
         run: |
-          ssh -o StrictHostKeyChecking=no ${{ secrets.USERNAME }}@${{ secrets.IP }} "sudo pkill bot || true; nohup ./bot > bot.log 2>&1 &"
+          ssh ${{ secrets.USERNAME }}@${{ secrets.IP }} << 'EOF'
+            sudo systemctl restart discord-bot
+          EOF
