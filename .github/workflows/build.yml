@@ -27,6 +27,12 @@ jobs:
         with:
           ssh-private-key: ${{ secrets.EC2_SSH_KEY }}
 
+      - name: Stop Bot on EC2
+        run: |
+          ssh ${{ secrets.USERNAME }}@${{ secrets.IP }} << 'EOF'
+            sudo systemctl stop discord-bot
+          EOF
+
       - name: Copy files via SSH
         run: |
           scp -o StrictHostKeyChecking=no bot ${{ secrets.USERNAME }}@${{ secrets.IP }}:~/bot
@@ -35,5 +41,5 @@ jobs:
       - name: Restart Bot on EC2
         run: |
           ssh ${{ secrets.USERNAME }}@${{ secrets.IP }} << 'EOF'
-            sudo systemctl restart discord-bot
+            sudo systemctl start discord-bot
           EOF
